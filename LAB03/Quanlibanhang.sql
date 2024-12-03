@@ -81,29 +81,28 @@ WHERE SP.NUOCSX = N'Singapore'
   );
 --  9. Tìm những nhân viên bán hàng đã thực hiện giao dịch bán nhiều nhất các sản phẩm do “Trung
 --Quoc” sản xuất trong năm 2006
-WITH SalesByEmployee AS (
-    SELECT 
-        HD.MANV,
-        SUM(CT.SL) AS TotalQuantity
-    FROM HOADON HD
-    JOIN CTHD CT ON HD.SOHD = CT.SOHD
-    JOIN SANPHAM SP ON CT.MASP = SP.MASP
-    WHERE SP.NUOCSX = N'Trung Quoc'
-      AND YEAR(HD.NGHD) = 2006
-    GROUP BY HD.MANV
-),
-MaxSales AS (
-    SELECT 
-        MAX(TotalQuantity) AS MaxQuantity
-    FROM SalesByEmployee
-)
-SELECT 
-    NV.MANV,
-    NV.HOTEN,
-    SB.TotalQuantity
-FROM SalesByEmployee SB
-JOIN MaxSales MS ON SB.TotalQuantity = MS.MaxQuantity
-JOIN NHANVIEN NV ON SB.MANV = NV.MANV;
+
+SELECT HD.MANV, NV.HOTEN, SUM(CT.SL) AS TongSoLuong
+FROM HOADON HD
+JOIN CTHD CT ON HD.SOHD = CT.SOHD
+JOIN SANPHAM SP ON CT.MASP = SP.MASP
+JOIN NHANVIEN NV ON HD.MANV = NV.MANV
+WHERE SP.NUOCSX = N'Trung Quoc'
+  AND YEAR(HD.NGHD) = 2006
+GROUP BY NV.HOTEN, HD.MANV
+HAVING SUM(CT.SL) = (
+    SELECT MAX(TongSoLuong)
+    FROM (
+        SELECT HD.MANV, SUM(CT.SL) AS TongSoLuong
+        FROM HOADON HD
+        JOIN CTHD CT ON HD.SOHD = CT.SOHD
+        JOIN SANPHAM SP ON CT.MASP = SP.MASP
+        WHERE SP.NUOCSX = N'Trung Quoc'
+          AND YEAR(HD.NGHD) = 2006
+        GROUP BY HD.MANV
+    ) AS SubQuery
+);
+
 
 --10. Tìm những khách hàng chưa từng mua bất kỳ sản phẩm nào do “Singapore” sản xuất nhưng đã
 --mua ít nhất một sản phẩm do “Trung Quoc” sản xuất.
@@ -125,28 +124,23 @@ WHERE SP.NUOCSX = N'Trung Quoc'
 --11. Tìm những hóa đơn có chứa tất cả các sản phẩm do “Singapore” sản xuất và trị giá hóa đơn lớn
 --hơn tổng trị giá trung bình của tất cả các hóa đơn trong hệ thống.
 -- Tìm danh sách tất cả sản phẩm do Singapore sản xuất
-WITH ProductsFromSingapore AS (
+
+SELECT HOADON.SOHD, HOADON.TRIGIA
+FROM HOADON
+WHERE HOADON.TRIGIA > (
+    SELECT AVG(TRIGIA) 
+    FROM HOADON
+) 
+AND NOT EXISTS (
     SELECT MASP
     FROM SANPHAM
     WHERE NUOCSX = 'Singapore'
-),
-AverageInvoiceValue AS (
-    SELECT AVG(TRIGIA) AS AvgValue
-    FROM HOADON
-)
-SELECT DISTINCT HD.SOHD, HD.NGHD, HD.MAKH, HD.MANV, HD.TRIGIA
-FROM HOADON HD
-JOIN CTHD CT ON HD.SOHD = CT.SOHD
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM ProductsFromSingapore PFS
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM CTHD CT1
-        WHERE CT1.SOHD = HD.SOHD AND CT1.MASP = PFS.MASP
+    AND MASP NOT IN (
+        SELECT CTHD.MASP
+        FROM CTHD
+        WHERE CTHD.SOHD = HOADON.SOHD
     )
-)
-AND HD.TRIGIA > (SELECT AvgValue FROM AverageInvoiceValue);
+);
 
 --12. Tìm danh sách các nhân viên có tổng số lượng bán ra của tất cả các loại sản phẩm vượt quá số
 --lượng trung bình của tất cả các nhân viên khác.
